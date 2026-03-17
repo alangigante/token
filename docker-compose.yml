@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  # Compass Router - Thin routing layer (Camada Zero)
+  router:
+    build:
+      context: .
+      args:
+        TARGET: router
+    ports:
+      - "9080:9080"
+    environment:
+      - PORT=9080
+    networks:
+      - cell-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Cell 1 (STS node)
+  cell-1:
+    build:
+      context: .
+      args:
+        TARGET: cell
+    ports:
+      - "9081:9081"
+    environment:
+      - CELL_ID=cell-1
+      - PORT=9081
+      - ROUTER_ADDR=router:9080
+      - ENV=D
+      - SITE=dev
+      - SOURCE=INT
+    depends_on:
+      - router
+    networks:
+      - cell-network
+
+  # Cell 2 (STS node)
+  cell-2:
+    build:
+      context: .
+      args:
+        TARGET: cell
+    ports:
+      - "9082:9082"
+    environment:
+      - CELL_ID=cell-2
+      - PORT=9082
+      - ROUTER_ADDR=router:9080
+      - ENV=D
+      - SITE=dev
+      - SOURCE=INT
+    depends_on:
+      - router
+    networks:
+      - cell-network
+
+  # Cell 3 (STS node)
+  cell-3:
+    build:
+      context: .
+      args:
+        TARGET: cell
+    ports:
+      - "9083:9083"
+    environment:
+      - CELL_ID=cell-3
+      - PORT=9083
+      - ROUTER_ADDR=router:9080
+      - ENV=D
+      - SITE=dev
+      - SOURCE=INT
+    depends_on:
+      - router
+    networks:
+      - cell-network
+
+  # Cell 4 (STS node) — N-1 rule: com 4 cells, cada uma opera a 75%
+  cell-4:
+    build:
+      context: .
+      args:
+        TARGET: cell
+    ports:
+      - "9084:9084"
+    environment:
+      - CELL_ID=cell-4
+      - PORT=9084
+      - ROUTER_ADDR=router:9080
+      - ENV=D
+      - SITE=dev
+      - SOURCE=INT
+    depends_on:
+      - router
+    networks:
+      - cell-network
+
+networks:
+  cell-network:
+    driver: bridge

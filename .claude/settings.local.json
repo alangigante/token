@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go version:*)",
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(curl -s http://localhost:8080/health)",
+      "Bash(curl -s -X POST http://localhost:9080/api/oauth/token -H \"Content-Type: application/x-www-form-urlencoded\" -d \"grant_type=client_credentials&client_id=f8b87b48-3969-4308-9d68-df4d4949c212&client_secret=ea0abbaa-841a-461f-8981-c310dc1def5f\")",
+      "Bash(TOKEN=\"muTqmbntHf2zs.f8b87b48-3969-4308-9d68-df4d4949c212.D4vrTjfytKXa8y7cMoJHO\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" -X POST http://localhost:9080/api/oauth/token -H \"Content-Type: application/x-www-form-urlencoded\" -d \"grant_type=token&client_id=f8b87b48-3969-4308-9d68-df4d4949c212&client_secret=ea0abbaa-841a-461f-8981-c310dc1def5f&token=$TOKEN\")",
+      "Bash(curl -s -X POST http://localhost:9080/api/oauth/token_info -H \"Content-Type: application/x-www-form-urlencoded\" -d \"token=$TOKEN\")",
+      "Bash(curl -s -X POST http://localhost:9080/api/oauth/token -H \"Content-Type: application/x-www-form-urlencoded\" -d \"grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=f8b87b48-3969-4308-9d68-df4d4949c212&client_secret=ea0abbaa-841a-461f-8981-c310dc1def5f&subject_token=$TOKEN&resource=urn:ietf:params:oauth:resource:opaque\")",
+      "Bash(taskkill /F /IM \"go.exe\")",
+      "Bash(taskkill /F /IM \"cell.exe\")",
+      "Bash(taskkill /F /IM \"router.exe\")"
+    ]
+  }
+}
