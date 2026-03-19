@@ -32,6 +32,9 @@ type TokenStore interface {
 	Get(tokenStr string) (*models.OpaqueToken, error)
 	Revoke(tokenStr string) error
 	RevokeByClient(clientID string) error
+	ListAll() []*models.OpaqueToken
+	ListByClient(clientID string) []*models.OpaqueToken
+	Count() (total int, active int)
 }
 
 // ApplicationStore defines the interface for credential/application registry.
@@ -312,6 +315,117 @@ func (s *TokenService) Introspect(tokenStr string) (*models.IntrospectionRespons
 		Env:       t.Env,
 		Flow:      t.Flow,
 	}, nil
+}
+
+// ============================================================
+// 5. CONSULTA DE TOKEN (GET)
+//    Permite visualizar detalhes de um token gerado
+// ============================================================
+
+// TokenDetailResponse holds the full token details for the GET endpoint.
+type TokenDetailResponse struct {
+	Token     string `json:"token"`
+	Prefix    string `json:"prefix"`
+	ClientID  string `json:"client_id"`
+	CellID    string `json:"cell_id"`
+	Scope     string `json:"scope"`
+	Active    bool   `json:"active"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+	ExpiresIn int64  `json:"expires_in_seconds"`
+	Source    string `json:"source"`
+	Env       string `json:"env"`
+	Flow      string `json:"flow"`
+}
+
+// TokenListResponse holds a summary list of tokens.
+type TokenListResponse struct {
+	Tokens      []TokenSummary `json:"tokens"`
+	Total       int            `json:"total"`
+	Active      int            `json:"active"`
+	CellID      string         `json:"cell_id"`
+}
+
+type TokenSummary struct {
+	TokenMasked string `json:"token_masked"`
+	Prefix      string `json:"prefix"`
+	ClientID    string `json:"client_id"`
+	Active      bool   `json:"active"`
+	ExpiresAt   string `json:"expires_at"`
+	CreatedAt   string `json:"created_at"`
+	Flow        string `json:"flow"`
+}
+
+// GetTokenDetails returns the full details of a specific token.
+func (s *TokenService) GetTokenDetails(tokenStr string) (*TokenDetailResponse, error) {
+	t, err := s.tokenStore.Get(tokenStr)
+	if err != nil {
+		return nil, fmt.Errorf("token not found: %w", err)
+	}
+
+	expiresIn := int64(time.Until(t.ExpiresAt).Seconds())
+	if expiresIn < 0 {
+		expiresIn = 0
+	}
+
+	return &TokenDetailResponse{
+		Token:     t.Token,
+		Prefix:    t.Prefix,
+		ClientID:  t.ClientID,
+		CellID:    t.CellID,
+		Scope:     t.Scope,
+		Active:    t.Active && time.Now().Before(t.ExpiresAt),
+		ExpiresAt: t.ExpiresAt.Format(time.RFC3339),
+		CreatedAt: t.CreatedAt.Format(time.RFC3339),
+		ExpiresIn: expiresIn,
+		Source:    t.Source,
+		Env:       t.Env,
+		Flow:      t.Flow,
+	}, nil
+}
+
+// ListTokens returns a summary of all tokens, optionally filtered by client_id.
+func (s *TokenService) ListTokens(clientID string) *TokenListResponse {
+	var tokens []*models.OpaqueToken
+	if clientID != "" {
+		tokens = s.tokenStore.ListByClient(clientID)
+	} else {
+		tokens = s.tokenStore.ListAll()
+	}
+
+	total, active := s.tokenStore.Count()
+
+	summaries := make([]TokenSummary, 0, len(tokens))
+	for _, t := range tokens {
+		// Mask the token: show prefix + client_id + first 4 chars of suffix
+		masked := t.Token
+		if parts := strings.SplitN(t.Token, ".", 3); len(parts) == 3 {
+			suffix := parts[2]
+			if len(suffix) > 4 {
+				suffix = suffix[:4] + "..."
+			}
+			masked = fmt.Sprintf("%s.%s.%s", parts[0], parts[1], suffix)
+		}
+
+		isActive := t.Active && time.Now().Before(t.ExpiresAt)
+
+		summaries = append(summaries, TokenSummary{
+			TokenMasked: masked,
+			Prefix:      t.Prefix,
+			ClientID:    t.ClientID,
+			Active:      isActive,
+			ExpiresAt:   t.ExpiresAt.Format(time.RFC3339),
+			CreatedAt:   t.CreatedAt.Format(time.RFC3339),
+			Flow:        t.Flow,
+		})
+	}
+
+	return &TokenListResponse{
+		Tokens: summaries,
+		Total:  total,
+		Active: active,
+		CellID: s.cellID,
+	}
 }
 
 // ============================================================

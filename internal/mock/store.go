@@ -72,6 +72,43 @@ func (s *TokenStore) Cleanup() {
 	}
 }
 
+// ListAll returns all tokens in the store (for debug/admin endpoints).
+func (s *TokenStore) ListAll() []*models.OpaqueToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*models.OpaqueToken, 0, len(s.tokens))
+	for _, t := range s.tokens {
+		result = append(result, t)
+	}
+	return result
+}
+
+// ListByClient returns all tokens for a specific client_id.
+func (s *TokenStore) ListByClient(clientID string) []*models.OpaqueToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var result []*models.OpaqueToken
+	for _, t := range s.tokens {
+		if t.ClientID == clientID {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// Count returns the total number of tokens and active tokens.
+func (s *TokenStore) Count() (total int, active int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, t := range s.tokens {
+		total++
+		if t.Active && time.Now().Before(t.ExpiresAt) {
+			active++
+		}
+	}
+	return
+}
+
 // ApplicationStore simulates the credential/application registry.
 // In production this would be DynamoDB or the Portal de Credenciais backend.
 type ApplicationStore struct {

@@ -53,6 +53,10 @@ func (rt *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/oauth/token_info", rt.handleProxy)
 	mux.HandleFunc("GET /api/oauth/tokeninfo", rt.handleProxy)
 
+	// Token lookup endpoints (proxied to cells)
+	mux.HandleFunc("GET /api/oauth/tokens", rt.handleProxy)
+	mux.HandleFunc("GET /api/oauth/tokens/{token}", rt.handleProxyTokenLookup)
+
 	// Management endpoints
 	mux.HandleFunc("GET /cells", rt.handleListCells)
 	mux.HandleFunc("POST /cells/register", rt.handleRegisterCell)
@@ -248,6 +252,33 @@ func (rt *Router) captureTokenPrefix(resp *http.Response, target *models.CellInf
 	w.Header().Set("X-Cell-ID", target.ID)
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
+}
+
+// handleProxyTokenLookup routes GET /api/oauth/tokens/{token} by extracting the prefix from the token path param.
+func (rt *Router) handleProxyTokenLookup(w http.ResponseWriter, r *http.Request) {
+	tokenStr := r.PathValue("token")
+
+	if tokenStr != "" {
+		prefix, err := oauth.ExtractPrefix(tokenStr)
+		if err == nil {
+			if cellID, ok := rt.prefixMapping.Get(prefix); ok {
+				if c, ok := rt.cellManager.GetCell(cellID); ok && c.Healthy {
+					log.Printf("[router] GET token lookup: prefix '%s' -> cell %s", prefix, cellID)
+					rt.forwardRequest(w, r, c, nil)
+					return
+				}
+			}
+		}
+	}
+
+	// Fallback: try all healthy cells
+	bestCell, err := rt.cellManager.GetLeastLoadedCell()
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no cells available"})
+		return
+	}
+	log.Printf("[router] GET token lookup: fallback -> cell %s", bestCell.ID)
+	rt.forwardRequest(w, r, bestCell, nil)
 }
 
 func (rt *Router) handleListCells(w http.ResponseWriter, r *http.Request) {

@@ -52,6 +52,8 @@ func main() {
 	log.Println("  POST /api/oauth/token        - Generate / Exchange / Revoke")
 	log.Println("  POST /api/oauth/token_info   - Introspect token")
 	log.Println("  GET  /api/oauth/tokeninfo    - Introspect token (query)")
+	log.Println("  GET  /api/oauth/tokens        - List tokens")
+	log.Println("  GET  /api/oauth/tokens/{t}    - Token details")
 	log.Println("  GET  /cells                  - List cells")
 	log.Println("  POST /cells/register         - Register cell")
 	log.Println("  GET  /health                 - Router health")

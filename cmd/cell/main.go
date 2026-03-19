@@ -69,6 +69,8 @@ func main() {
 	log.Println("    2. Token exchange:     POST /api/oauth/token  grant_type=urn:ietf:params:oauth:grant-type:token-exchange")
 	log.Println("    3. Revogar token:      POST /api/oauth/token  grant_type=token")
 	log.Println("    4. Introspecção:       POST /api/oauth/token_info | GET /api/oauth/tokeninfo?token=...")
+	log.Println("    5. Listar tokens:      GET  /api/oauth/tokens[?client_id=...]")
+	log.Println("    6. Detalhe token:      GET  /api/oauth/tokens/{access_token}")
 	log.Println()
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
