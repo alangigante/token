@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/alandtse/poc-cell-oauth/internal/mock"
@@ -15,9 +18,10 @@ import (
 )
 
 func main() {
-	cellID := getEnv("CELL_ID", "cell-1")
-	port := getEnv("PORT", "9081")
 	routerAddr := getEnv("ROUTER_ADDR", "localhost:9080")
+
+	// Auto-detect cell ID and port if not explicitly set
+	cellID, port := autoDetectCellConfig(routerAddr)
 	env := getEnv("ENV", "D")
 	site := getEnv("SITE", "dev")
 	source := getEnv("SOURCE", "INT")
@@ -76,6 +80,85 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("cell server error: %v", err)
 	}
+}
+
+// autoDetectCellConfig queries the router for existing cells and picks the next
+// available cell ID and port automatically. If CELL_ID or PORT env vars are set,
+// those take precedence.
+func autoDetectCellConfig(routerAddr string) (cellID, port string) {
+	// If explicitly set via env, use those
+	envCellID := os.Getenv("CELL_ID")
+	envPort := os.Getenv("PORT")
+	if envCellID != "" && envPort != "" {
+		return envCellID, envPort
+	}
+
+	basePort := 9081
+	maxCellID := 0
+
+	// Try to query the router for existing cells
+	resp, err := http.Get(fmt.Sprintf("http://%s/cells", routerAddr))
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+
+		var cellsResp struct {
+			Cells []struct {
+				ID      string `json:"id"`
+				Address string `json:"address"`
+			} `json:"cells"`
+			Total int `json:"total"`
+		}
+		if json.Unmarshal(body, &cellsResp) == nil && cellsResp.Total > 0 {
+			for _, c := range cellsResp.Cells {
+				// Extract cell number from "cell-N"
+				var n int
+				if _, err := fmt.Sscanf(c.ID, "cell-%d", &n); err == nil {
+					if n > maxCellID {
+						maxCellID = n
+					}
+				}
+				// Track used ports
+				if _, portStr, err := net.SplitHostPort(c.Address); err == nil {
+					if p, err := strconv.Atoi(portStr); err == nil {
+						if p >= basePort {
+							basePort = p + 1
+						}
+					}
+				}
+			}
+			log.Printf("[auto-detect] found %d existing cells, highest cell-id=%d", cellsResp.Total, maxCellID)
+		}
+	} else {
+		log.Printf("[auto-detect] router not reachable yet, using defaults")
+	}
+
+	// If env vars partially set, fill in the missing one
+	nextNum := maxCellID + 1
+	if envCellID != "" {
+		cellID = envCellID
+	} else {
+		cellID = fmt.Sprintf("cell-%d", nextNum)
+	}
+
+	if envPort != "" {
+		port = envPort
+	} else {
+		port = strconv.Itoa(basePort)
+		// Verify port is available, increment if not
+		for i := 0; i < 10; i++ {
+			ln, err := net.Listen("tcp", ":"+port)
+			if err == nil {
+				ln.Close()
+				break
+			}
+			p, _ := strconv.Atoi(port)
+			port = strconv.Itoa(p + 1)
+		}
+	}
+
+	log.Printf("[auto-detect] selected cell_id=%s port=%s", cellID, port)
+	return cellID, port
 }
 
 // seedApplications creates demo credentials matching the real STS format.
