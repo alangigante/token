@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # =================================================================
 # Test script - STS OAuth 2.0 Token Opaco PoC (Camada Zero)
 #
