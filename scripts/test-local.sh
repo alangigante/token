@@ -27,6 +27,16 @@
 
 set -e
 
+# Auto-detect python command ($PY on Linux/Mac, python on Windows)
+if command -v $PY &>/dev/null; then
+  PY=$PY
+elif command -v python &>/dev/null; then
+  PY=python
+else
+  echo "ERROR: python not found. Install Python 3 and try again."
+  exit 1
+fi
+
 ROUTER_URL="${ROUTER_URL:-http://localhost:9080}"
 CELL_URL="${CELL_URL:-http://localhost:9081}"
 
@@ -47,7 +57,15 @@ fail() { FAIL_COUNT=$((FAIL_COUNT + 1)); echo -e "  ${RED}✗ $1${NC}"; }
 info() { TEST_NUM=$((TEST_NUM + 1)); echo -e "\n${YELLOW}[$TEST_NUM] $1${NC}"; }
 header() { echo -e "\n${CYAN}${BOLD}═══════════════════════════════════════════════════${NC}"; echo -e "${CYAN}${BOLD}  $1${NC}"; echo -e "${CYAN}${BOLD}═══════════════════════════════════════════════════${NC}"; }
 detail() { echo -e "  ${GRAY}$1${NC}"; }
-json_print() { echo "$1" | python3 -m json.tool 2>/dev/null | while IFS= read -r line; do echo -e "  ${GRAY}$line${NC}"; done || echo -e "  ${GRAY}$1${NC}"; }
+json_print() {
+  local formatted
+  formatted=$(echo "$1" | $PY -m json.tool 2>/dev/null)
+  if [ -n "$formatted" ]; then
+    echo "$formatted" | while IFS= read -r line; do echo -e "  ${GRAY}$line${NC}"; done
+  else
+    echo -e "  ${GRAY}$1${NC}"
+  fi
+}
 separator() { echo -e "${GRAY}  ─────────────────────────────────────────────${NC}"; }
 
 # --- Credenciais de teste ---
@@ -81,15 +99,15 @@ CELL_HEALTH=$(curl -s "$CELL_URL/health")
 json_print "$CELL_HEALTH"
 echo "$CELL_HEALTH" | grep -q '"healthy"' && pass "Cell is healthy" || fail "Cell health failed"
 
-CELL_ID=$(echo "$CELL_HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cell_id','?'))" 2>/dev/null)
+CELL_ID=$(echo "$CELL_HEALTH" | $PY -c "import sys,json; print(json.load(sys.stdin).get('cell_id','?'))" 2>/dev/null)
 detail "Cell ID: $CELL_ID"
 
 info "List registered cells"
 detail "curl -s $ROUTER_URL/cells"
 CELLS=$(curl -s "$ROUTER_URL/cells")
 json_print "$CELLS"
-CELL_COUNT=$(echo "$CELLS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
-HEALTHY_COUNT=$(echo "$CELLS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('healthy',0))" 2>/dev/null)
+CELL_COUNT=$(echo "$CELLS" | $PY -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
+HEALTHY_COUNT=$(echo "$CELLS" | $PY -c "import sys,json; print(json.load(sys.stdin).get('healthy',0))" 2>/dev/null)
 echo "$CELLS" | grep -q '"total"' && pass "Cells endpoint works (total=$CELL_COUNT, healthy=$HEALTHY_COUNT)" || fail "Cells endpoint failed"
 
 info "Router info endpoint"
@@ -123,7 +141,7 @@ CELL_HEADER=$(curl -s -o /dev/null -D - -X POST "$ROUTER_URL/api/oauth/token" \
   -d "client_secret=$OPAQUE_CLIENT_SECRET" 2>/dev/null | grep -i "X-Cell-ID" || true)
 detail "Response header: $CELL_HEADER"
 
-ACCESS_TOKEN=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
+ACCESS_TOKEN=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
 
 if [ -n "$ACCESS_TOKEN" ]; then
   TOKEN_PREFIX=$(echo "$ACCESS_TOKEN" | cut -d'.' -f1)
@@ -135,12 +153,12 @@ if [ -n "$ACCESS_TOKEN" ]; then
   detail "Suffix:           ${TOKEN_SUFFIX:0:8}..."
   detail "Full token:       ${ACCESS_TOKEN:0:60}..."
 
-  TOKEN_SUB=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sub',''))" 2>/dev/null)
-  TOKEN_ISS=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('iss',''))" 2>/dev/null)
-  TOKEN_EXP=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in',''))" 2>/dev/null)
-  TOKEN_SRC=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null)
-  TOKEN_ENV=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('env',''))" 2>/dev/null)
-  TOKEN_FLOW=$(echo "$OPAQUE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('flow',''))" 2>/dev/null)
+  TOKEN_SUB=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('sub',''))" 2>/dev/null)
+  TOKEN_ISS=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('iss',''))" 2>/dev/null)
+  TOKEN_EXP=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('expires_in',''))" 2>/dev/null)
+  TOKEN_SRC=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null)
+  TOKEN_ENV=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('env',''))" 2>/dev/null)
+  TOKEN_FLOW=$(echo "$OPAQUE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('flow',''))" 2>/dev/null)
   detail "sub=$TOKEN_SUB iss=$TOKEN_ISS expires_in=$TOKEN_EXP source=$TOKEN_SRC env=$TOKEN_ENV flow=$TOKEN_FLOW"
 else
   fail "Falha na geração do token opaco"
@@ -155,10 +173,10 @@ detail "GET $ROUTER_URL/api/oauth/tokens/{access_token}"
 TOKEN_DETAIL=$(curl -s "$ROUTER_URL/api/oauth/tokens/$ACCESS_TOKEN")
 json_print "$TOKEN_DETAIL"
 
-TOKEN_DETAIL_ACTIVE=$(echo "$TOKEN_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active',False))" 2>/dev/null)
-TOKEN_DETAIL_PREFIX=$(echo "$TOKEN_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin).get('prefix',''))" 2>/dev/null)
-TOKEN_DETAIL_CELL=$(echo "$TOKEN_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cell_id',''))" 2>/dev/null)
-TOKEN_DETAIL_EXP=$(echo "$TOKEN_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in_seconds',0))" 2>/dev/null)
+TOKEN_DETAIL_ACTIVE=$(echo "$TOKEN_DETAIL" | $PY -c "import sys,json; print(json.load(sys.stdin).get('active',False))" 2>/dev/null)
+TOKEN_DETAIL_PREFIX=$(echo "$TOKEN_DETAIL" | $PY -c "import sys,json; print(json.load(sys.stdin).get('prefix',''))" 2>/dev/null)
+TOKEN_DETAIL_CELL=$(echo "$TOKEN_DETAIL" | $PY -c "import sys,json; print(json.load(sys.stdin).get('cell_id',''))" 2>/dev/null)
+TOKEN_DETAIL_EXP=$(echo "$TOKEN_DETAIL" | $PY -c "import sys,json; print(json.load(sys.stdin).get('expires_in_seconds',0))" 2>/dev/null)
 
 if [ "$TOKEN_DETAIL_ACTIVE" = "True" ]; then
   pass "Token consultado via GET: active=true prefix=$TOKEN_DETAIL_PREFIX cell=$TOKEN_DETAIL_CELL expires_in=${TOKEN_DETAIL_EXP}s"
@@ -171,8 +189,8 @@ detail "GET $ROUTER_URL/api/oauth/tokens"
 TOKEN_LIST=$(curl -s "$ROUTER_URL/api/oauth/tokens")
 json_print "$TOKEN_LIST"
 
-LIST_TOTAL=$(echo "$TOKEN_LIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
-LIST_ACTIVE=$(echo "$TOKEN_LIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active',0))" 2>/dev/null)
+LIST_TOTAL=$(echo "$TOKEN_LIST" | $PY -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
+LIST_ACTIVE=$(echo "$TOKEN_LIST" | $PY -c "import sys,json; print(json.load(sys.stdin).get('active',0))" 2>/dev/null)
 [ "$LIST_TOTAL" -ge 1 ] && pass "Token listado (total=$LIST_TOTAL, active=$LIST_ACTIVE)" || fail "List tokens vazia"
 
 # ============================================================
@@ -189,12 +207,12 @@ JWT_RESP=$(curl -s -X POST "$ROUTER_URL/api/oauth/token" \
   -d "client_secret=$JWT_CLIENT_SECRET")
 json_print "$JWT_RESP"
 
-JWT_ACCESS=$(echo "$JWT_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+JWT_ACCESS=$(echo "$JWT_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
 if [[ "$JWT_ACCESS" == eyJ* ]]; then
   pass "Token JWT gerado (começa com eyJ...)"
   detail "JWT: ${JWT_ACCESS:0:60}..."
 
-  JWT_PAYLOAD=$(echo "$JWT_ACCESS" | cut -d'.' -f2 | python3 -c "
+  JWT_PAYLOAD=$(echo "$JWT_ACCESS" | cut -d'.' -f2 | $PY -c "
 import sys, base64, json
 payload = sys.stdin.read().strip()
 payload += '=' * (4 - len(payload) % 4)
@@ -248,10 +266,10 @@ EXCHANGE_RESP=$(curl -s -X POST "$ROUTER_URL/api/oauth/token" \
   -d "resource=urn:ietf:params:oauth:resource:opaque")
 json_print "$EXCHANGE_RESP"
 
-JWT_FROM_EXCHANGE=$(echo "$EXCHANGE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
-EXCHANGE_SCOPE=$(echo "$EXCHANGE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('scope',''))" 2>/dev/null)
-EXCHANGE_TYPE=$(echo "$EXCHANGE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('issued_token_type',''))" 2>/dev/null)
-EXCHANGE_ACTIVE=$(echo "$EXCHANGE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active',''))" 2>/dev/null)
+JWT_FROM_EXCHANGE=$(echo "$EXCHANGE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
+EXCHANGE_SCOPE=$(echo "$EXCHANGE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('scope',''))" 2>/dev/null)
+EXCHANGE_TYPE=$(echo "$EXCHANGE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('issued_token_type',''))" 2>/dev/null)
+EXCHANGE_ACTIVE=$(echo "$EXCHANGE_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin).get('active',''))" 2>/dev/null)
 
 if [ -n "$JWT_FROM_EXCHANGE" ] && [[ "$JWT_FROM_EXCHANGE" == eyJ* ]]; then
   pass "Exchange retornou JWT!"
@@ -259,7 +277,7 @@ if [ -n "$JWT_FROM_EXCHANGE" ] && [[ "$JWT_FROM_EXCHANGE" == eyJ* ]]; then
   detail "scope=$EXCHANGE_SCOPE issued_token_type=$EXCHANGE_TYPE active=$EXCHANGE_ACTIVE"
 
   # Decode JWT payload
-  JWT_PAYLOAD=$(echo "$JWT_FROM_EXCHANGE" | cut -d'.' -f2 | python3 -c "
+  JWT_PAYLOAD=$(echo "$JWT_FROM_EXCHANGE" | cut -d'.' -f2 | $PY -c "
 import sys, base64, json
 payload = sys.stdin.read().strip()
 payload += '=' * (4 - len(payload) % 4)
@@ -287,7 +305,7 @@ PARTNER_RESP=$(curl -s -X POST "$ROUTER_URL/api/oauth/token" \
   -d "client_secret=$PARTNER_CLIENT_SECRET")
 json_print "$PARTNER_RESP"
 
-PARTNER_TOKEN=$(echo "$PARTNER_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
+PARTNER_TOKEN=$(echo "$PARTNER_RESP" | $PY -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
 if [ -n "$PARTNER_TOKEN" ]; then
   PARTNER_PREFIX=$(echo "$PARTNER_TOKEN" | cut -d'.' -f1)
   pass "Token parceiros gerado! prefix=$PARTNER_PREFIX"
@@ -299,7 +317,7 @@ info "List tokens filtrado por client_id (Gateway)"
 detail "GET $ROUTER_URL/api/oauth/tokens?client_id=$OPAQUE_CLIENT_ID"
 FILTERED_LIST=$(curl -s "$ROUTER_URL/api/oauth/tokens?client_id=$OPAQUE_CLIENT_ID")
 json_print "$FILTERED_LIST"
-FILTERED_COUNT=$(echo "$FILTERED_LIST" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('tokens',[])))" 2>/dev/null)
+FILTERED_COUNT=$(echo "$FILTERED_LIST" | $PY -c "import sys,json; print(len(json.load(sys.stdin).get('tokens',[])))" 2>/dev/null)
 [ "$FILTERED_COUNT" -ge 1 ] && pass "Filtro por client_id OK ($FILTERED_COUNT tokens)" || fail "Filtro por client_id falhou"
 
 info "Introspect token parceiros"
@@ -336,7 +354,7 @@ echo "$INTROSPECT_REVOKED" | grep -q '"active":false' && pass "Token revogado es
 info "GET token revogado - verificar status via GET"
 REVOKED_DETAIL=$(curl -s "$ROUTER_URL/api/oauth/tokens/$ACCESS_TOKEN")
 json_print "$REVOKED_DETAIL"
-REVOKED_ACTIVE=$(echo "$REVOKED_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active',True))" 2>/dev/null)
+REVOKED_ACTIVE=$(echo "$REVOKED_DETAIL" | $PY -c "import sys,json; print(json.load(sys.stdin).get('active',True))" 2>/dev/null)
 [ "$REVOKED_ACTIVE" = "False" ] && pass "GET confirma token revogado (active=false)" || fail "GET mostra token como ativo"
 
 info "Exchange com token revogado deve falhar"
@@ -422,8 +440,8 @@ echo "$PARTNER_CHECK" | grep -q '"active":true' && pass "Token parceiros AINDA a
 
 info "List tokens final - verificar estado geral"
 FINAL_LIST=$(curl -s "$ROUTER_URL/api/oauth/tokens")
-FINAL_TOTAL=$(echo "$FINAL_LIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
-FINAL_ACTIVE=$(echo "$FINAL_LIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active',0))" 2>/dev/null)
+FINAL_TOTAL=$(echo "$FINAL_LIST" | $PY -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null)
+FINAL_ACTIVE=$(echo "$FINAL_LIST" | $PY -c "import sys,json; print(json.load(sys.stdin).get('active',0))" 2>/dev/null)
 json_print "$FINAL_LIST"
 pass "Estado final: total=$FINAL_TOTAL tokens, active=$FINAL_ACTIVE"
 
