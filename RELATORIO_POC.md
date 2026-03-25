@@ -332,7 +332,127 @@ Cliente                STS (Compass Router + Cell)           API (Resource Provi
   |<-----------------------------------------------------------------|
 ```
 
-### 4.2 Cobertura de Testes (26 cenarios)
+### 4.2 Tokens Reais do STSGo (Ambiente de Producao)
+
+Os tokens abaixo foram extraidos do STSGo real em ambiente de producao para servir como referencia de implementacao.
+
+#### Token Opaco Gerado (STSGo - Producao)
+
+**Requisicao:**
+```bash
+curl -X POST https://10.54.192.109:8088/api/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=b29c0e84-2d39-4f5c-89f0-29655aab46cf" \
+  -d "client_secret=****"
+```
+
+**Resposta (claims do STSGo):**
+```json
+{
+  "iss": "https://openid.itau.com.br/api/oauth/token",
+  "sub": "b29c0e84-2d39-4f5c-89f0-29655aab46cf",
+  "exp": 1774288050,
+  "iat": 1774279750,
+  "Access_Token": "2aa3fe95.2a0abf30-266c-4503-a577-a061e93331e",
+  "usr": "null",
+  "flow": "CC",
+  "source": "INT",
+  "site": "ctmm1",
+  "env": "p",
+  "mbi": "true",
+  "aut": "",
+  "scope": "appid-8c1244b6-39f7-4a1e-99f6-c7bfe0cd465e biometria-sessao"
+}
+```
+
+**Analise do token gerado:**
+```
+2aa3fe95 . 2a0abf30-266c-4503-a577-a061e93331e
+|________|   |___________________________________|
+  PREFIX              CLIENT_ID (UUID)
+ (routing)        (identifica credencial)
+```
+
+- **Prefix `2aa3fe95`**: Usado pelo Compass Router para direcionar a requisicao ao shard/cell correto
+- **Client ID `2a0abf30-266c-4503-a577-a061e93331e`**: UUID da credencial que gerou o token
+- **exp - iat = 8300 segundos (~2.3 horas)**: TTL do token em producao
+- **env `p`**: Ambiente de producao
+- **site `ctmm1`**: Site de deploy especifico
+
+#### Introspeccao do Token (STSGo - Producao)
+
+**Requisicao:**
+```bash
+curl -X POST https://10.54.192.109:8088/api/oauth/token_info \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=2aa3fe95.2a0abf30-266c-4503-a577-a061e93331e"
+```
+
+**Resposta (validacao/introspeccao):**
+```json
+{
+  "Access_Token": "2aa3fe95.2a0abf30-266c-4503-a577-a061e93331e",
+  "active": true,
+  "client_id": "b29c0e84-2d39-4f5c-89f0-29655aab46cf",
+  "env": "p",
+  "exp": 1774288050000,
+  "flow": "CC",
+  "iat": 1774279750000,
+  "iss": "https://openid.itau.com.br/api/oauth/token",
+  "mbi": "true",
+  "scope": "appid-8c1244b6-39f7-4a1e-99f6-c7bfe0cd465e biometria-sessao",
+  "site": "ctmm1",
+  "source": "INT",
+  "sub": "b29c0e84-2d39-4f5c-89f0-29655aab46cf",
+  "user_id": "b29c0e84-2d39-4f5c-89f0-29655aab46cf",
+  "username": "null"
+}
+```
+
+#### Comparativo: Geracao vs Introspeccao (STSGo Real)
+
+| Claim | Geracao | Introspeccao | Observacao |
+|-------|---------|-------------|-----------|
+| `iss` | `https://openid.itau.com.br/api/oauth/token` | `https://openid.itau.com.br/api/oauth/token` | Igual |
+| `sub` | `b29c0e84-2d39-4f5c-89f0-29655aab46cf` | `b29c0e84-2d39-4f5c-89f0-29655aab46cf` | Igual |
+| `exp` | `1774288050` (segundos) | `1774288050000` (**milissegundos**) | **Atencao: unidade diferente** |
+| `iat` | `1774279750` (segundos) | `1774279750000` (**milissegundos**) | **Atencao: unidade diferente** |
+| `Access_Token` | `2aa3fe95.2a0abf30-...` | `2aa3fe95.2a0abf30-...` | Igual |
+| `usr` | `"null"` | - | Ausente na introspeccao |
+| `flow` | `"CC"` | `"CC"` | Igual |
+| `source` | `"INT"` | `"INT"` | Igual |
+| `site` | `"ctmm1"` | `"ctmm1"` | Igual |
+| `env` | `"p"` | `"p"` | Igual |
+| `mbi` | `"true"` | `"true"` | Igual |
+| `aut` | `""` | - | Ausente na introspeccao |
+| `scope` | `"appid-8c1244b6-... biometria-sessao"` | `"appid-8c1244b6-... biometria-sessao"` | Igual |
+| `active` | - | `true` | **Presente apenas na introspeccao** |
+| `client_id` | - | `b29c0e84-2d39-...` | **Presente apenas na introspeccao** |
+| `user_id` | - | `b29c0e84-2d39-...` | **Presente apenas na introspeccao** (igual ao sub para CC) |
+| `username` | - | `"null"` | **Presente apenas na introspeccao** |
+
+#### Comparativo: Token STSGo Real vs PoC
+
+| Aspecto | STSGo Real (Producao) | PoC (Local) |
+|---------|----------------------|-------------|
+| **Token format** | `2aa3fe95.2a0abf30-266c-...` | `GNIqMR1ihT2zt.f8b87b48-3969-...._dfSDq_19W4wSxPOZBZQ9` |
+| **Prefix length** | 8 chars | 13 chars |
+| **Suffix** | Nao visivel (2 partes) | 21 chars (3 partes) |
+| **TTL** | ~2.3 horas (prod) | 14 dias (1209600s) |
+| **exp/iat geracao** | Segundos | Segundos (string) |
+| **exp/iat introspeccao** | Milissegundos | Segundos (int) |
+| **iss** | `https://openid.itau.com.br/api/oauth/token` | `https://openid.itau.com.br/api/oauth/token` |
+| **env** | `p` (producao) | `D` (dev) |
+| **site** | `ctmm1` | `dev` |
+| **mbi** | `"true"` | Nao implementado |
+| **aut** | `""` | Nao implementado |
+| **Armazenamento** | Cassandra (3 nos) | In-memory (mock) |
+| **Assinatura JWT** | RSA (HSM/KMS) | HMAC-SHA256 (mock) |
+
+> **Nota**: Os campos `mbi` e `aut` nao foram implementados na PoC pois sao especificos do ambiente de producao. Podem ser adicionados facilmente ao modelo `OpaqueToken` e `OpaqueTokenResponse` quando necessario.
+
+### 4.3 Cobertura de Testes (26 cenarios)
 
 | # | Cenario | Resultado |
 |---|---------|----------|
